@@ -1,0 +1,5 @@
+{
+    "require": {
+        "jlevers/selling-partner-api": "^5.8"
+    }
+}
