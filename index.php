@@ -292,13 +292,16 @@
             if(isset($compressionAlgorithm) && $compressionAlgorithm == 'GZIP') {
                 $report_document_content = gzdecode($report_document_content);
             }
-
             $report_document_content = explode("\n", $report_document_content);
             $result = array();
             $header = array_shift($report_document_content);
+            // $header = str_replace('
+            // ', '', $header);
             $header = explode("\t", $header);
             foreach ($report_document_content as $row){
                 if ($row != ''){
+            //         $row = str_replace('
+            // ', '', $row);
                     $row = explode("\t", $row);
                     $temp = array_combine($header, $row);
                     array_push($result, $temp);
@@ -315,6 +318,28 @@
             } catch (Exception $e) {
                 echo 'Exception when calling OrdersV0Api->getOrder: ', $e->getMessage(), PHP_EOL;
             }
+        }
+        
+        private function fn_GetOrderItems($order_id){
+            $apiInstance = new OrdersV0Api($this->config);
+            try {
+                $result = $apiInstance->getOrderItems($order_id);
+                return $result;
+            } catch (Exception $e) {
+                echo 'Exception when calling OrdersV0Api->getOrderItems: ', $e->getMessage(), PHP_EOL;
+            }
+
+        }
+
+        private function fn_GetOrderAddress($order_id){
+            $apiInstance = new OrdersV0Api($this->config);
+            try {
+                $result = $apiInstance->getOrderAddress($order_id);
+                return $result;
+            } catch (Exception $e) {
+                echo 'Exception when calling OrdersV0Api->getOrderAddress: ', $e->getMessage(), PHP_EOL;
+            }
+
         }
 
         public function fn_GetOrders($startDateTime, $endDateTime){
@@ -425,16 +450,11 @@
             
         }
 
-        public function fn_GetReports($startDateTime, $endDateTime){
+        public function fn_GetOrderReports($startDateTime, $endDateTime){
             // step 1
-            $marketplace_ids = array(US_MARKETPLACE);
-            // $report_option = NULL;
-            // $report_option = '"custom":"true"';
+            $report_option = NULL;
             $report_type = 'GET_FLAT_FILE_ALL_ORDERS_DATA_BY_LAST_UPDATE_GENERAL';
-            // $report_type = 'GET_MERCHANT_LISTINGS_ALL_DATA';
-
-            // POST_FULFILLMENT_ORDER_REQUEST_DATA
-            
+            $marketplace_ids = array(US_MARKETPLACE);
             $data_start_time = $startDateTime;
             $data_end_time = NULL;
 
@@ -461,15 +481,143 @@
             $report_type = $result->getReportType();
 
             $result = $this->fn_GetReportDocument($report_document_id, $report_type);
-
+            print('<pre>');
+            var_dump($result);
+            print('</pre>');
             // step 4
             $url = $result->getUrl();
             $compression_algorithm = $result->getCompressionAlgorithm();
 
             $result = $this->fn_DownloadReportDocument($url, $compression_algorithm);
-
+            // print('<pre>');
+            // var_dump($result);
+            // print('</pre>');
             // save csv
-            $fh = fopen('fileout1.csv', 'w+');
+            $currentDateTime = new DateTime('UTC');
+            $currentDateTime = $currentDateTime->format('Y-m-d_H-i-s');
+            $fh = fopen("$currentDateTime.csv", 'w+');
+            $header = array('No', 'order-id', 'order-item-id', 'purchase-date', 'payments-date', 
+            'buyer-email', 'buyer-name', 'buyer-phone-number', 'buyer-phone-number', 'sku', 
+            'product-name', 'quantity-purchased', 'currency', 'item-price', 'item-tax', 'shipping-price', 
+            'shipping-tax', 'ship-service-level', 'ship-service-name', 'recipient-name', 'ship-address-1', 
+            'ship-address-2', 'ship-address-3', 'address-type', 'ship-city', 'ship-state', 
+            'ship-postal-code', 'ship-country', 'item-promotion-discount', 'item-promotion-id', 
+            'ship-promotion-discount', 'ship-promotion-id', 'delivery-start-date', 'delivery-end-date', 
+            'delivery-time-zone', 'delivery-Instructions', 'sales-channel', 'earliest-ship-date', 
+            'latest-ship-date', 'earliest-delivery-date', 'latest-delivery-date', 
+            'is-business-order', 'purchase-order-number', 'price-designation', 
+            'is-prime', 'buyer-company-name', 'signature-confirmation-recommended');
+            fputcsv($fh, $header);
+            foreach ($result as $i => $order){
+                $row = array($i+1);
+                $order_temp = $this->fn_GetOrder($order['amazon-order-id'])->getPayload();
+                $order_items_list = $this->fn_GetOrderItems($order['amazon-order-id']);
+                $order_item = $order_items_list->getPayload()->getOrderItems()[0];
+                print('<pre>');
+                var_dump($order_temp);
+                var_dump($order_item);
+                var_dump($order);
+                print('</pre>');
+                $row[] = $order['amazon-order-id']; // order-id
+                $row[] = $order_item->getOrderItemId(); // order-item-id
+                $row[] = $order['purchase-date']; // purchase-date
+                $row[] = ''; // payments-date
+                $row[] = $order_temp->getBuyerInfo()->getBuyerEmail(); // buyer-email
+                $row[] = $order_temp->getBuyerInfo()->getBuyerName(); // buyer-name
+                $row[] = ''; // buyer-phone-number
+                $row[] = $order_temp->getDefaultShipFromLocationAddress()->getPhone(); // buyer-phone-number
+                $row[] = $order_item->getSellerSku(); // sku
+                $row[] = $order['product-name']; // product-name
+                $row[] = $order['quantity']; // quantity-purchased
+                $row[] = $order['currency']; // currency
+                $row[] = $order['item-price']; // item-price
+                $row[] = $order['item-tax']; // item-tax
+                $row[] = $order['shipping-price']; // shipping-price
+                $row[] = $order['shipping-tax']; // shipping-tax
+                $row[] = $order['ship-service-level']; // ship-service-level
+                $row[] = $order_temp->getShipServiceLevel();
+                $row[] = ''; //recipient-name
+                $row[] = $order_temp->getDefaultShipFromLocationAddress()->getAddressLine1();
+                $row[] = $order_temp->getDefaultShipFromLocationAddress()->getAddressLine2();
+                $row[] = $order_temp->getDefaultShipFromLocationAddress()->getAddressLine3();
+                $row[] = $order['address-type'];
+                $row[] = $order['ship-city'];
+                $row[] = $order['ship-state'];
+                $row[] = $order['ship-postal-code'];
+                $row[] = $order['ship-country'];
+                $row[] = $order['item-promotion-discount'];
+                $row[] = ''; // item-promotion-id
+                $row[] = $order['ship-promotion-discount'];
+                $row[] = ''; // ship-promotion-id
+                $row[] = $order_item->getScheduledDeliveryStartDate(); // delivery-start-date
+                $row[] = $order_item->getScheduledDeliveryEndDate(); // delivery-end-date
+                $row[] = ''; // delivery-time-zone
+                $row[] = ''; // delivery-Instructions
+                $row[] = $order['sales-channel'];
+                $row[] = $order_temp->getEarliestShipDate();
+                $row[] = $order_temp->getLatestShipDate();
+                $row[] = $order_temp->getEarliestDeliveryDate();
+                $row[] = $order_temp->getLatestDeliveryDate();
+                $row[] = $order['is-business-order']; // $order_temp->getIsBusinessOrder();
+                $row[] = $order['purchase-order-number'];
+                $row[] = $order['price-designation'];
+                $row[] = $order_temp->getIsPrime() ? 'TRUE' : 'FALSE';
+                $row[] = $order['buyer-company-name'];
+                $row[] = $order['signature-confirmation-recommended'];
+
+                // fputcsv($fh, $row);
+                break;
+            }
+            fclose($fh);
+
+        }
+
+        public function fn_GetInventoryReports($startDateTime, $endDateTime){
+            // step 1
+            $report_option = '"custom":"true"';
+            $report_type = 'GET_MERCHANT_LISTINGS_ALL_DATA';
+            $marketplace_ids = array(US_MARKETPLACE);
+            $data_start_time = $startDateTime;
+            $data_end_time = NULL;
+
+            $result = $this->fn_CreateReport($marketplace_ids, $report_option, $report_type, $data_start_time, $data_end_time);
+
+            // step 2
+            $report_id = $result->getReportId();
+
+            $result = $this->fn_GetReport($report_id);
+            $processingStatus = $result->getProcessingStatus();
+            while (strcmp($processingStatus, 'DONE') != 0) {
+                if (strcmp($processingStatus, 'CANCELLED') != 0 && strcmp($processingStatus, 'FATAL') != 0) {
+                    usleep(500);
+                    $result = $this->fn_GetReport($report_id);
+                    $processingStatus = $result->getProcessingStatus();
+                }
+                else {
+                    return;
+                }
+            }
+
+            // step 3
+            $report_document_id = $result->getReportDocumentId();
+            $report_type = $result->getReportType();
+
+            $result = $this->fn_GetReportDocument($report_document_id, $report_type);
+            print('<pre>');
+            var_dump($result);
+            print('</pre>');
+            // step 4
+            $url = $result->getUrl();
+            $compression_algorithm = $result->getCompressionAlgorithm();
+
+            $result = $this->fn_DownloadReportDocument($url, $compression_algorithm);
+            print('<pre>');
+            var_dump($result);
+            print('</pre>');
+            // save csv
+            $currentDateTime = new DateTime('UTC');
+            $currentDateTime = $currentDateTime->format('Y-m-d_H-i-s');
+            $fh = fopen("$currentDateTime.csv", 'w+');
             $field = array('No');
             foreach ($result as $i => $order){
                 $row = array($i+1);
@@ -515,27 +663,35 @@
             var_dump($result);
             print('</pre>');
 
-            // step 4   POST_FULFILLMENT_ORDER_REQUEST_DATA
-            $result = $this->fn_CreateFeed($feed_document_id, 'POST_FLAT_FILE_CONVERGENCE_LISTINGS_DATA', US_MARKETPLACE);
+            // step 4    POST_FLAT_FILE_CONVERGENCE_LISTINGS_DATA POST_ORDER_FULFILLMENT_DATA
+            $result = $this->fn_CreateFeed($feed_document_id, 'POST_FULFILLMENT_ORDER_REQUEST_DATA', US_MARKETPLACE);
             $feed_id = $result->getFeedId();
 
             // step 5
-            do {
-                $result = $this->fn_GetFeed($feed_id);
-                $processingStatus = $result->getProcessingStatus();
+            
+            $result = $this->fn_GetFeed($feed_id);
+            $processingStatus = $result->getProcessingStatus();
+            while (strcmp($processingStatus, 'DONE') != 0) {
                 if (strcmp($processingStatus, 'CANCELLED') != 0 && strcmp($processingStatus, 'FATAL') != 0){
-                    print('<pre>');
-                    var_dump($processingStatus);
-                    print('</pre>');
+                    usleep(500);
+                    $result = $this->fn_GetFeed($feed_id);
+                    $processingStatus = $result->getProcessingStatus();
+                }
+                else{
                     return;
                 }
-            } while (strcmp($processingStatus, 'DONE') != 0);
+            }
             $feed_document_id = $result->getResultFeedDocumentId();
 
             // step 6
             $result = $this->fn_GetFeedDocumentation($feed_document_id);
             $url = $result->getUrl();
             $compressionAlgorithm = $result->getCompressionAlgorithm();
+
+            print('<pre>');
+            var_dump($url);
+            var_dump($compressionAlgorithm);
+            print('</pre>');
 
             // step 7
             $result = $this->fn_DownloadFeedProcessingReport($url, $compressionAlgorithm);
@@ -544,16 +700,28 @@
             var_dump($result);
             print('</pre>');
         }
+
     }
 
-
+    set_time_limit (0);
     $currentDateTime = new DateTime('UTC');
     $endDateTime = $currentDateTime->format('Y-m-d\TH:i:s.000\Z');
     $startDateTime = date('Y-m-d\TH:i:s.000\Z',strtotime('- 2 days'));
     $amazon = new Amazon();
 
-    // $amazon->fn_GetOrders($startDateTime, $endDateTime);
-    $amazon->fn_GetReports($startDateTime, $endDateTime);
-    // $amazon->fn_ReportFeed();
+    // Order Module 1
+    $amazon->fn_GetOrderReports($startDateTime, $endDateTime);
+
+    // $amazon->fn_GetReports($report_option, $report_type, $startDateTime, $endDateTime);
+
+
+    // Order Module 2
+    // $amazon->fn_ReportFeed($startDateTime, $endDateTime);
+
+    // Inventory Module 1
+    // $amazon->fn_GetInventoryReports($report_option, $report_type, $startDateTime, $endDateTime);
+
+    // Inventory Module 2
+    // $amazon->fn_ReportFeed($startDateTime, $endDateTime);
 
 ?>
