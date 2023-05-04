@@ -712,14 +712,11 @@
     // Order Module 1
     $amazon->fn_GetOrderReports($startDateTime, $endDateTime);
 
-    // $amazon->fn_GetReports($report_option, $report_type, $startDateTime, $endDateTime);
-
-
     // Order Module 2
     // $amazon->fn_ReportFeed($startDateTime, $endDateTime);
 
     // Inventory Module 1
-    // $amazon->fn_GetInventoryReports($report_option, $report_type, $startDateTime, $endDateTime);
+    // $amazon->fn_GetInventoryReports($startDateTime, $endDateTime);
 
     // Inventory Module 2
     // $amazon->fn_ReportFeed($startDateTime, $endDateTime);
