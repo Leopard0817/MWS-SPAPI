@@ -295,13 +295,11 @@
             $report_document_content = explode("\n", $report_document_content);
             $result = array();
             $header = array_shift($report_document_content);
-            // $header = str_replace('
-            // ', '', $header);
+            $header = preg_replace("/\r|\n/", "", $header);
             $header = explode("\t", $header);
             foreach ($report_document_content as $row){
                 if ($row != ''){
-            //         $row = str_replace('
-            // ', '', $row);
+                    $row = preg_replace("/\r|\n/", "", $row);
                     $row = explode("\t", $row);
                     $temp = array_combine($header, $row);
                     array_push($result, $temp);
@@ -317,6 +315,7 @@
                 return $result;
             } catch (Exception $e) {
                 echo 'Exception when calling OrdersV0Api->getOrder: ', $e->getMessage(), PHP_EOL;
+                return null;
             }
         }
         
@@ -400,9 +399,15 @@
 
             try {
                 $result = $apiInstance->getOrders($marketplace_ids, $created_after, $created_before, $last_updated_after, $last_updated_before, $order_statuses, null, null, null, null, $max_results_per_page);
+                print('<pre>');
+                var_dump($result);
+                print('</pre>');
                 $orders = $result->getPayload()->getOrders();
                 if (count($orders) !== 0){
-                    $fh = fopen('fileout.csv', 'w+');
+                    $currentDateTime = new DateTime('UTC');
+                    $currentDateTime = $currentDateTime->format('Y-m-d_H-i-s');
+                    $fh = fopen("get_ordersapi_$currentDateTime.csv", 'w+');
+                    // $fh = fopen('fileout.csv', 'w+');
                     $field = array('No', );
                     foreach ($orders as $i => $order){
                         $value = array($i+1);
@@ -456,7 +461,7 @@
             $report_type = 'GET_FLAT_FILE_ALL_ORDERS_DATA_BY_LAST_UPDATE_GENERAL';
             $marketplace_ids = array(US_MARKETPLACE);
             $data_start_time = $startDateTime;
-            $data_end_time = NULL;
+            $data_end_time = $endDateTime;
 
             $result = $this->fn_CreateReport($marketplace_ids, $report_option, $report_type, $data_start_time, $data_end_time);
 
@@ -489,14 +494,14 @@
             $compression_algorithm = $result->getCompressionAlgorithm();
 
             $result = $this->fn_DownloadReportDocument($url, $compression_algorithm);
-            // print('<pre>');
-            // var_dump($result);
-            // print('</pre>');
+            print('<pre>');
+            var_dump(count($result));
+            print('</pre>');
             // save csv
             $currentDateTime = new DateTime('UTC');
             $currentDateTime = $currentDateTime->format('Y-m-d_H-i-s');
-            $fh = fopen("$currentDateTime.csv", 'w+');
-            $header = array('No', 'order-id', 'order-item-id', 'purchase-date', 'payments-date', 
+            $fh = fopen("get_report_api_$currentDateTime.csv", 'w+');
+            $header = array('No', 'order-id',  'order-status', 'order-item-id', 'purchase-date', 'payments-date', 
             'buyer-email', 'buyer-name', 'buyer-phone-number', 'buyer-phone-number', 'sku', 
             'product-name', 'quantity-purchased', 'currency', 'item-price', 'item-tax', 'shipping-price', 
             'shipping-tax', 'ship-service-level', 'ship-service-name', 'recipient-name', 'ship-address-1', 
@@ -510,23 +515,31 @@
             fputcsv($fh, $header);
             foreach ($result as $i => $order){
                 $row = array($i+1);
-                $order_temp = $this->fn_GetOrder($order['amazon-order-id'])->getPayload();
-                $order_items_list = $this->fn_GetOrderItems($order['amazon-order-id']);
-                $order_item = $order_items_list->getPayload()->getOrderItems()[0];
-                print('<pre>');
-                var_dump($order_temp);
-                var_dump($order_item);
-                var_dump($order);
-                print('</pre>');
+                // $order_temp = $this->fn_GetOrder($order['amazon-order-id'])->getPayload();
+                // if ($order_temp == null){
+                //     continue;
+                // }
+                // $order_items_list = $this->fn_GetOrderItems($order['amazon-order-id']);
+                // $order_item = $order_items_list->getPayload()->getOrderItems()[0];
+                // print('<pre>');
+                // var_dump($order_temp);
+                // var_dump($order_item);
+                // var_dump($order);
+                // print('</pre>');
                 $row[] = $order['amazon-order-id']; // order-id
-                $row[] = $order_item->getOrderItemId(); // order-item-id
+                $row[] = $order['order-status']; // order-status
+                // $row[] = $order_item->getOrderItemId(); // order-item-id
+                $row[] = '';
                 $row[] = $order['purchase-date']; // purchase-date
+                $row[] = $order['last-updated-date']; // last-updated-date
                 $row[] = ''; // payments-date
-                $row[] = $order_temp->getBuyerInfo()->getBuyerEmail(); // buyer-email
-                $row[] = $order_temp->getBuyerInfo()->getBuyerName(); // buyer-name
+                // $row[] = $order_temp->getBuyerInfo()->getBuyerEmail(); // buyer-email
+                // $row[] = $order_temp->getBuyerInfo()->getBuyerName(); // buyer-name
+                $row[] = '';$row[] = '';
                 $row[] = ''; // buyer-phone-number
-                $row[] = $order_temp->getDefaultShipFromLocationAddress()->getPhone(); // buyer-phone-number
-                $row[] = $order_item->getSellerSku(); // sku
+                // $row[] = $order_temp->getDefaultShipFromLocationAddress()->getPhone(); // buyer-phone-number
+                // $row[] = $order_item->getSellerSku(); // sku
+                $row[] = '';$row[] = '';
                 $row[] = $order['product-name']; // product-name
                 $row[] = $order['quantity']; // quantity-purchased
                 $row[] = $order['currency']; // currency
@@ -535,41 +548,258 @@
                 $row[] = $order['shipping-price']; // shipping-price
                 $row[] = $order['shipping-tax']; // shipping-tax
                 $row[] = $order['ship-service-level']; // ship-service-level
-                $row[] = $order_temp->getShipServiceLevel();
-                $row[] = ''; //recipient-name
-                $row[] = $order_temp->getDefaultShipFromLocationAddress()->getAddressLine1();
-                $row[] = $order_temp->getDefaultShipFromLocationAddress()->getAddressLine2();
-                $row[] = $order_temp->getDefaultShipFromLocationAddress()->getAddressLine3();
-                $row[] = $order['address-type'];
-                $row[] = $order['ship-city'];
-                $row[] = $order['ship-state'];
-                $row[] = $order['ship-postal-code'];
-                $row[] = $order['ship-country'];
-                $row[] = $order['item-promotion-discount'];
+                // $row[] = $order_temp->getShipServiceLevel(); // ship-service-name
+                $row[] = '';
+                $row[] = ''; // recipient-name
+                // $row[] = $order_temp->getDefaultShipFromLocationAddress()->getAddressLine1(); // ship-address-1
+                // $row[] = $order_temp->getDefaultShipFromLocationAddress()->getAddressLine2(); // ship-address-2
+                // $row[] = $order_temp->getDefaultShipFromLocationAddress()->getAddressLine3(); // ship-address-3
+                $row[] = '';$row[] = '';$row[] = '';
+                $row[] = $order['address-type']; // address-type
+                $row[] = $order['ship-city']; // ship-city
+                $row[] = $order['ship-state']; // ship-state
+                $row[] = $order['ship-postal-code']; // ship-postal-code
+                $row[] = $order['ship-country']; // ship-country
+                $row[] = $order['item-promotion-discount']; // item-promotion-discount
                 $row[] = ''; // item-promotion-id
-                $row[] = $order['ship-promotion-discount'];
+                $row[] = $order['ship-promotion-discount']; // ship-promotion-discount
+                $row[] = ''; // ship-promotion-id
+                // $row[] = $order_item->getScheduledDeliveryStartDate(); // delivery-start-date
+                // $row[] = $order_item->getScheduledDeliveryEndDate(); // delivery-end-date
+                $row[] = '';$row[] = '';
+                $row[] = ''; // delivery-time-zone
+                $row[] = ''; // delivery-Instructions
+                $row[] = $order['sales-channel'];
+                // $row[] = $order_temp->getEarliestShipDate(); // earliest-ship-date
+                // $row[] = $order_temp->getLatestShipDate(); // latest-ship-date
+                // $row[] = $order_temp->getEarliestDeliveryDate(); // earliest-delivery-date
+                // $row[] = $order_temp->getLatestDeliveryDate(); // latest-delivery-date
+                $row[] = '';$row[] = '';$row[] = '';$row[] = '';
+                $row[] = $order['is-business-order']; // $order_temp->getIsBusinessOrder(); // is-business-order
+                $row[] = $order['purchase-order-number']; // purchase-order-number
+                $row[] = $order['price-designation']; // price-designation
+                // $row[] = $order_temp->getIsPrime() ? 'TRUE' : 'FALSE'; // is-prime
+                $row[] = '';
+                $row[] = $order['buyer-company-name']; // buyer-company-name
+                // $row[] = $order['signature-confirmation-recommended']; // signature-confirmation-recommended
+                $row[] = ''; // signature-confirmation-recommended
+
+                fputcsv($fh, $row);
+                // break;
+            }
+            fclose($fh);
+        }
+
+        public function fn_GetPendingOrders($startDateTime, $endDateTime){
+            // step 1
+            $report_option = NULL;
+            $report_type = 'GET_FLAT_FILE_ALL_ORDERS_DATA_BY_LAST_UPDATE_GENERAL';
+            $marketplace_ids = array(US_MARKETPLACE);
+            $data_start_time = $startDateTime;
+            $data_end_time = $endDateTime;
+
+            $result = $this->fn_CreateReport($marketplace_ids, $report_option, $report_type, $data_start_time, $data_end_time);
+
+            // step 2
+            $report_id = $result->getReportId();
+
+            $result = $this->fn_GetReport($report_id);
+            $processingStatus = $result->getProcessingStatus();
+            while (strcmp($processingStatus, 'DONE') != 0) {
+                if (strcmp($processingStatus, 'CANCELLED') != 0 && strcmp($processingStatus, 'FATAL') != 0) {
+                    usleep(500);
+                    $result = $this->fn_GetReport($report_id);
+                    $processingStatus = $result->getProcessingStatus();
+                }
+                else {
+                    return;
+                }
+            }
+
+            // step 3
+            $report_document_id = $result->getReportDocumentId();
+            $report_type = $result->getReportType();
+
+            $result = $this->fn_GetReportDocument($report_document_id, $report_type);
+            print('<pre>');
+            var_dump($result);
+            print('</pre>');
+            // step 4
+            $url = $result->getUrl();
+            $compression_algorithm = $result->getCompressionAlgorithm();
+
+            $result = $this->fn_DownloadReportDocument($url, $compression_algorithm);
+            print('<pre>');
+            var_dump(count($result));
+            print('</pre>');
+            // save csv
+            $currentDateTime = new DateTime('UTC');
+            $currentDateTime = $currentDateTime->format('Y-m-d_H-i-s');
+            $fh = fopen("pending_orders_$currentDateTime.csv", 'w+');
+            $header = array('No', 'order-id',  'order-status', 'order-item-id', 'purchase-date', 'payments-date', 
+            'buyer-email', 'buyer-name', 'buyer-phone-number', 'buyer-phone-number', 'sku', 
+            'product-name', 'quantity-purchased', 'currency', 'item-price', 'item-tax', 'shipping-price', 
+            'shipping-tax', 'ship-service-level', 'ship-service-name', 'recipient-name', 'ship-address-1', 
+            'ship-address-2', 'ship-address-3', 'address-type', 'ship-city', 'ship-state', 
+            'ship-postal-code', 'ship-country', 'item-promotion-discount', 'item-promotion-id', 
+            'ship-promotion-discount', 'ship-promotion-id', 'delivery-start-date', 'delivery-end-date', 
+            'delivery-time-zone', 'delivery-Instructions', 'sales-channel', 'earliest-ship-date', 
+            'latest-ship-date', 'earliest-delivery-date', 'latest-delivery-date', 
+            'is-business-order', 'purchase-order-number', 'price-designation', 
+            'is-prime', 'buyer-company-name', 'signature-confirmation-recommended');
+            fputcsv($fh, $header);
+            $i = 0;
+            foreach ($result as $order){
+                if ($order['order-status'] != 'Pending'){
+                    continue;
+                }
+                $row = array($i + 1);
+                $i++;
+                $order_temp = $this->fn_GetOrder($order['amazon-order-id'])->getPayload();
+                // if ($order_temp == null){
+                //     continue;
+                // }
+                $order_items_list = $this->fn_GetOrderItems($order['amazon-order-id']);
+                $order_item = $order_items_list->getPayload()->getOrderItems()[0];
+                // print('<pre>');
+                // var_dump($order_temp);
+                // var_dump($order_item);
+                // var_dump($order);
+                // print('</pre>');
+                $row[] = $order['amazon-order-id']; // order-id
+                $row[] = $order['order-status']; // order-status
+                $row[] = $order_item->getOrderItemId(); // order-item-id
+                $row[] = $order['purchase-date']; // purchase-date
+                $row[] = $order['last-updated-date']; // last-updated-date
+                $row[] = ''; // payments-date
+                $row[] = $order_temp->getBuyerInfo()->getBuyerEmail(); // buyer-email
+                $row[] = $order_temp->getBuyerInfo()->getBuyerName(); // buyer-name
+                // $row[] = '';$row[] = '';
+                $row[] = ''; // buyer-phone-number
+                // $row[] = $order_temp->getDefaultShipFromLocationAddress()->getPhone(); // buyer-phone-number
+                // $row[] = $order_item->getSellerSku(); // sku
+                $row[] = '';$row[] = '';
+                $row[] = $order['product-name']; // product-name
+                $row[] = $order['quantity']; // quantity-purchased
+                $row[] = $order['currency']; // currency
+                $row[] = $order['item-price']; // item-price
+                $row[] = $order['item-tax']; // item-tax
+                $row[] = $order['shipping-price']; // shipping-price
+                $row[] = $order['shipping-tax']; // shipping-tax
+                $row[] = $order['ship-service-level']; // ship-service-level
+                $row[] = $order_temp->getShipServiceLevel(); // ship-service-name
+                // $row[] = '';
+                $row[] = ''; // recipient-name
+                $row[] = $order_temp->getDefaultShipFromLocationAddress()->getAddressLine1(); // ship-address-1
+                $row[] = $order_temp->getDefaultShipFromLocationAddress()->getAddressLine2(); // ship-address-2
+                $row[] = $order_temp->getDefaultShipFromLocationAddress()->getAddressLine3(); // ship-address-3
+                // $row[] = '';$row[] = '';$row[] = '';
+                $row[] = $order['address-type']; // address-type
+                $row[] = $order['ship-city']; // ship-city
+                $row[] = $order['ship-state']; // ship-state
+                $row[] = $order['ship-postal-code']; // ship-postal-code
+                $row[] = $order['ship-country']; // ship-country
+                $row[] = $order['item-promotion-discount']; // item-promotion-discount
+                $row[] = ''; // item-promotion-id
+                $row[] = $order['ship-promotion-discount']; // ship-promotion-discount
                 $row[] = ''; // ship-promotion-id
                 $row[] = $order_item->getScheduledDeliveryStartDate(); // delivery-start-date
                 $row[] = $order_item->getScheduledDeliveryEndDate(); // delivery-end-date
                 $row[] = ''; // delivery-time-zone
                 $row[] = ''; // delivery-Instructions
                 $row[] = $order['sales-channel'];
-                $row[] = $order_temp->getEarliestShipDate();
-                $row[] = $order_temp->getLatestShipDate();
-                $row[] = $order_temp->getEarliestDeliveryDate();
-                $row[] = $order_temp->getLatestDeliveryDate();
-                $row[] = $order['is-business-order']; // $order_temp->getIsBusinessOrder();
-                $row[] = $order['purchase-order-number'];
-                $row[] = $order['price-designation'];
-                $row[] = $order_temp->getIsPrime() ? 'TRUE' : 'FALSE';
-                $row[] = $order['buyer-company-name'];
-                $row[] = $order['signature-confirmation-recommended'];
+                $row[] = $order_temp->getEarliestShipDate(); // earliest-ship-date
+                $row[] = $order_temp->getLatestShipDate(); // latest-ship-date
+                $row[] = $order_temp->getEarliestDeliveryDate(); // earliest-delivery-date
+                $row[] = $order_temp->getLatestDeliveryDate(); // latest-delivery-date
+                // $row[] = '';$row[] = '';$row[] = '';$row[] = '';
+                $row[] = $order['is-business-order']; // $order_temp->getIsBusinessOrder(); // is-business-order
+                $row[] = $order['purchase-order-number']; // purchase-order-number
+                $row[] = $order['price-designation']; // price-designation
+                $row[] = $order_temp->getIsPrime() ? 'TRUE' : 'FALSE'; // is-prime
+                // $row[] = '';
+                $row[] = $order['buyer-company-name']; // buyer-company-name
+                $row[] = $order['signature-confirmation-recommended']; // signature-confirmation-recommended
 
-                // fputcsv($fh, $row);
-                break;
+                fputcsv($fh, $row);
             }
             fclose($fh);
+        }
 
+        public function fn_GetShippedOrders($startDateTime, $endDateTime){
+            // step 1
+            $report_option = NULL;
+            $report_type = 'GET_FLAT_FILE_ALL_ORDERS_DATA_BY_LAST_UPDATE_GENERAL';
+            $marketplace_ids = array(US_MARKETPLACE);
+            $order_result = array();
+
+            $data_end_time = $endDateTime;
+            $startTime = new DateTime($startDateTime);
+            $end = false;
+            do {
+                $endTime = new DateTime($data_end_time);
+                $time_diff = date_diff($startTime, $endTime);
+                if ($time_diff->days > 30 && $time_diff->invert == 0){
+                    $data_start_time = date('Y-m-d\TH:i:s.000\Z', strtotime('- 30 days', strtotime($data_end_time)));
+                }
+                else{
+                    $data_start_time = $startDateTime;
+                    $end = true;
+                }
+                $result = $this->fn_CreateReport($marketplace_ids, $report_option, $report_type, $data_start_time, $data_end_time);
+
+                // step 2
+                $report_id = $result->getReportId();
+                $result = $this->fn_GetReport($report_id);
+                $processingStatus = $result->getProcessingStatus();
+                while (strcmp($processingStatus, 'DONE') != 0) {
+                    if (strcmp($processingStatus, 'CANCELLED') != 0 && strcmp($processingStatus, 'FATAL') != 0) {
+                        usleep(500);
+                        $result = $this->fn_GetReport($report_id);
+                        $processingStatus = $result->getProcessingStatus();
+                    }
+                    else {
+                        return;
+                    }
+                }
+
+                // step 3
+                $report_document_id = $result->getReportDocumentId();
+                $report_type = $result->getReportType();
+                $result = $this->fn_GetReportDocument($report_document_id, $report_type);
+                
+                // step 4
+                $url = $result->getUrl();
+                $compression_algorithm = $result->getCompressionAlgorithm();
+                $result = $this->fn_DownloadReportDocument($url, $compression_algorithm);                
+                $order_result = array_merge($order_result, $result);
+
+                $data_end_time = $data_start_time;
+            } while ($end == false);
+            // save csv
+            $currentDateTime = new DateTime('UTC');
+            $currentDateTime = $currentDateTime->format('Y-m-d_H-i-s');
+            $fh = fopen("shipped_orders_$currentDateTime.csv", 'w+');
+            $header = array('No');
+            $i = 1;
+            foreach ($order_result as $j => $order){
+                $row = array($i);
+                foreach ($order as $key => $col) {
+                    if ($j === 0){
+                        array_push($header, $key);
+                    }
+                    array_push($row, $col);
+                }
+                if ($j === 0){
+                    fputcsv($fh, $header);
+                }
+                if ($order['order-status'] != 'Shipped' && $order['order-status'] != 'Unshipped'){
+                    continue;
+                }
+                $i++;
+                fputcsv($fh, $row);
+            }
+            fclose($fh);
         }
 
         public function fn_GetInventoryReports($startDateTime, $endDateTime){
@@ -633,7 +863,6 @@
                 fputcsv($fh, $row);
             }
             fclose($fh);
-
         }
 
         public function fn_ReportFeed($startDateTime, $endDateTime){
@@ -706,12 +935,18 @@
     set_time_limit (0);
     $currentDateTime = new DateTime('UTC');
     $endDateTime = $currentDateTime->format('Y-m-d\TH:i:s.000\Z');
-    $startDateTime = date('Y-m-d\TH:i:s.000\Z',strtotime('- 2 days'));
     $amazon = new Amazon();
 
-    // Order Module 1
-    $amazon->fn_GetOrderReports($startDateTime, $endDateTime);
+    // $amazon->fn_GetOrders($startDateTime, $endDateTime);
 
+    // Order Module 1
+    // $amazon->fn_GetOrderReports($startDateTime, $endDateTime);
+    $startDateTime = date('Y-m-d\TH:i:s.000\Z',strtotime('- 15 days'));
+    $amazon->fn_GetPendingOrders($startDateTime, $endDateTime);
+    
+    // $startDateTime = date('Y-m-d\TH:i:s.000\Z',strtotime('- 75 days'));
+    // $amazon->fn_GetShippedOrders($startDateTime, $endDateTime);
+    
     // Order Module 2
     // $amazon->fn_ReportFeed($startDateTime, $endDateTime);
 
