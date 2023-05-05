@@ -3,15 +3,18 @@
 
     use SellingPartnerApi\Configuration;
     use SellingPartnerApi\Endpoint;
-
+    use SellingPartnerApi\Document;
     use SellingPartnerApi\Api\SellersV1Api;
     use SellingPartnerApi\Api\OrdersV0Api;
     use SellingPartnerApi\Api\ReportsV20210630Api;
+    use SellingPartnerApi\ReportType;
     use SellingPartnerApi\Api\FeedsV20210630Api;
     use SellingPartnerApi\Model\FeedsV20210630\CreateFeedDocumentSpecification;
     use SellingPartnerApi\Model\FeedsV20210630\CreateFeedSpecification;
     use SellingPartnerApi\Model\ReportsV20210630\CreateReportSpecification;
-    
+    use SellingPartnerApi\Model\OrdersV0\ConfirmShipmentRequest;
+    use SellingPartnerApi\Model\OrdersV0\PackageDetail;
+    use SellingPartnerApi\Model\OrdersV0\ConfirmShipmentOrderItem;
 
     define('LWA_CLIENT_ID', 'amzn1.application-oa2-client.c61e4e0db5d04b1aae280454412cae23');
     define('LWA_CLIENT_SECRET', 'amzn1.oa2-cs.v1.9c67e9db746644379b864887d6da051458d57f3d655374c588f3d15d1398fa80');
@@ -38,213 +41,7 @@
                 // "endpoint" => Endpoint::NA_SANDBOX  // or another endpoint from lib/Endpoints.php,
                 "endpoint" => Endpoint::NA  // or another endpoint from lib/Endpoints.php,
             ]);
-        }
-
-        private function isJson($string) {
-            json_decode($string);
-            return json_last_error() === JSON_ERROR_NONE;
-        }
-
-        private function fn_CreateFeedDocument(){
-            $apiInstance = new FeedsV20210630Api($this->config);
-            $body = new CreateFeedDocumentSpecification();
-            $body->setContentType("text/xml; charset=UTF-8");
-            try {
-                $result = $apiInstance->createFeedDocument($body);
-                return $result;
-            } catch (Exception $e) {
-                echo 'Exception when calling FeedsV20210630Api->createFeedDocument: ', $e->getMessage(), PHP_EOL;
-            }
-        }
-
-        private function fn_CreateTrackingXML(array $csv) {
-            $dom  = new DOMDocument("1.0", "UTF-8");
-            $dom->formatOutput = TRUE;
-            $document = $dom->appendChild(
-                $dom->createElement('AmazonEnvelope')
-            );
-            $document->setAttribute("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance");
-            $document->setAttribute("xsi:noNamespaceSchemaLocation", "amznenvelope.xsd");
-            $header = $document->appendChild(
-                $dom->createElement('Header')
-            );
-            $headerContent = $header->appendChild(
-                $dom->createElement('DocumentVersion', '1.01')
-            );
-            $headerContent = $header->appendChild(
-                $dom->createElement('MerchantIdentifier', 'DEI_APP')
-            );
-            $MessageType = $document->appendChild(
-                $dom->createElement('MessageType', 'OrderFulfillment')
-            );
-            // All the magic here
-            $lll = 444;
-            foreach($csv as $row) {
-                $lll++;
-                // $shipping_carrier = explode("|", $row['shipping_carrier']);
-                // echo ($row['selling_channel']."\n");
-                // echo ("Order No.: ".$row['order-id']."\n");
-                // echo ("Tracking Number: ".$row['tracking_number']."\n");
-                // echo ("Shipping Carrier: ".$row['shipping_carrier']."\n");
-                // echo ("Ship Method: ".$row['shipping_method']."\n");
-                // echo ("Ship Date: ".$row['ship_date']."\n\n");
-                
-                $Message = $document->appendChild(
-                    $dom->createElement('Message')
-                );
-                //@TODO MessageID is taking the order for now, its not necessary
-                $messageid = $dom->createElement('MessageID', substr($row['order-id'], -7));
-                $order = $dom->createElement('OrderFulfillment');
-
-                $order->appendChild(
-                    $dom->createElement('AmazonOrderID', $row['order-id'])
-                );
-                $order->appendChild(
-                    // $dom->createElement('FulfillmentDate', date("Y-m-d\TH:i:s-00:00", strtotime($row['ship_date'])))
-                    $dom->createElement('FulfillmentDate', date("Y-m-d\TH:i:s-00:00", strtotime($row['earliest-ship-date'])))
-                );
-
-                $orderdata = $order->appendChild(
-                    $dom->createElement('FulfillmentData')
-                );
-                
-                //New Amazon requirement 05/24/21 - If carrier is "Other" add Carrier Code
-                // if (count($shipping_carrier) > 1 ) {
-                    $orderdata->appendChild(
-                        // $dom->createElement('CarrierCode', $shipping_carrier[0])
-                        $dom->createElement('CarrierCode', 111)
-                    );
-                    $orderdata->appendChild(
-                        // $dom->createElement('CarrierName', $shipping_carrier[1])
-                        $dom->createElement('CarrierName', '222')
-                    );
-                // } else {
-                    // $orderdata->appendChild(
-                    //     // $dom->createElement('CarrierName', $row['shipping_carrier'])
-                    //     $dom->createElement('CarrierName', '333')
-                    // );
-                // }
-                
-                $orderdata->appendChild(
-                    // $dom->createElement('ShippingMethod', $row['shipping_method'])
-                    $dom->createElement('ShippingMethod', 'Other')
-                );
-                $orderdata->appendChild(
-                    // $dom->createElement('ShipperTrackingNumber', $row['tracking_number'])
-                    $dom->createElement('ShipperTrackingNumber', $lll)
-                );
-                    
-                
-                $Message->appendChild($messageid);
-                $Message->appendChild($order);
-            };
-            $dom->save('test.xml');
-            return $dom->saveXML(); // returns the formatted XML
-        }
-
-        private function fn_ConstructFeed($filename){
-            $rows   = array_map('str_getcsv', file($filename));
-            $header = array_shift($rows);
-            $csv    = array();
-            foreach($rows as $row) {
-                $csv[] = array_combine($header, $row);
-            }
-            $result = $this->fn_CreateTrackingXML($csv);
-            return $result;
-        }
-
-        private function fn_UploadFeedData($url, $content) {
-
-            $curl = curl_init($url);
-            curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($curl, CURLOPT_CUSTOMREQUEST, "PUT");
-
-            $headers = array(
-                "Content-Type: text/xml; charset=UTF-8"
-            );
-            curl_setopt($curl, CURLOPT_HTTPHEADER, $headers);
-
-            $data = <<<DATA
-            $content
-            DATA;
-
-            curl_setopt($curl, CURLOPT_POSTFIELDS, $data);
-
-            $resp = curl_exec($curl);
-            curl_close($curl);
-
-            return $resp;
-        }
-
-        private function fn_UploadFeedDocument($feedUploadUrl, $feedContentFilePath){
-            $fileResourceType = gettype($feedContentFilePath);
-
-            // resource or string ? make it to a string
-            if ($fileResourceType == 'resource') {
-                $file_content = stream_get_contents($feedContentFilePath);
-            } else {
-                $file_content = file_get_contents($feedContentFilePath);
-            }
-
-            // utf8 !
-            $file_content = utf8_encode($file_content);
-            
-            $response = $this->fn_UploadFeedData($feedUploadUrl, $file_content);
-
-            return $response;
-        }
-
-        private function fn_CreateFeed($feedDocumentId, $feedType, $marketplaceId){
-            $apiInstance = new FeedsV20210630Api($this->config);
-            $body = new CreateFeedSpecification();
-            $body->setFeedType($feedType);
-            $body->setMarketplaceIds(array($marketplaceId));
-            $body->setInputFeedDocumentId($feedDocumentId);
-            try {
-                $result = $apiInstance->createFeed($body);
-                return $result;
-
-            } catch (Exception $e) {
-                echo 'Exception when calling FeedsV20210630Api->createFeed: ', $e->getMessage(), PHP_EOL;
-            }
-        }
-
-        private function fn_GetFeed($feedId){
-            $apiInstance = new FeedsV20210630Api($this->config);
-            try {
-                $result = $apiInstance->getFeed($feedId);
-                return $result;
-            } catch (Exception $e) {
-                echo 'Exception when calling FeedsV20210630Api->getFeed: ', $e->getMessage(), PHP_EOL;
-            }
-        }
-
-        private function fn_GetFeedDocumentation($feedDocumentId){
-            $apiInstance = new FeedsV20210630Api($this->config);
-            try {
-                $result = $apiInstance->getFeedDocument($feedDocumentId);
-                return $result;
-            } catch (Exception $e) {
-                echo 'Exception when calling FeedsV20210630Api->getFeedDocument: ', $e->getMessage(), PHP_EOL;
-            }
-        }
-
-        private function fn_DownloadFeedProcessingReport($url, $compressionAlgorithm){
-            $feed_processing_report_content = file_get_contents($url);
-            if(isset($compressionAlgorithm) && $compressionAlgorithm == 'GZIP') {
-                $feed_processing_report_content = gzdecode($feed_processing_report_content);
-            }
-
-            // check if report content is json encoded or not
-            if ($this->isJson($feed_processing_report_content) == true) {
-                $json = $feed_processing_report_content;
-            } else {
-                $feed_processing_report_content = preg_replace('/\s+/S', " ", $feed_processing_report_content);
-                $xml = simplexml_load_string($feed_processing_report_content);
-                $json = json_encode($xml);
-            }
-
-            return json_decode($json, TRUE);
+            set_time_limit (0);
         }
 
         private function fn_CreateReport($marketplace_ids, $report_option = NULL, $report_type, $data_start_time, $data_end_time = NULL){
@@ -287,27 +84,6 @@
             }
         }
 
-        private function fn_DownloadReportDocument($url, $compressionAlgorithm){
-            $report_document_content = file_get_contents($url);
-            if(isset($compressionAlgorithm) && $compressionAlgorithm == 'GZIP') {
-                $report_document_content = gzdecode($report_document_content);
-            }
-            $report_document_content = explode("\n", $report_document_content);
-            $result = array();
-            $header = array_shift($report_document_content);
-            $header = preg_replace("/\r|\n/", "", $header);
-            $header = explode("\t", $header);
-            foreach ($report_document_content as $row){
-                if ($row != ''){
-                    $row = preg_replace("/\r|\n/", "", $row);
-                    $row = explode("\t", $row);
-                    $temp = array_combine($header, $row);
-                    array_push($result, $temp);
-                }
-            }
-            return $result;
-        }
-
         private function fn_GetOrder($order_id){
             $apiInstance = new OrdersV0Api($this->config);
             try {
@@ -330,279 +106,17 @@
 
         }
 
-        private function fn_GetOrderAddress($order_id){
-            $apiInstance = new OrdersV0Api($this->config);
-            try {
-                $result = $apiInstance->getOrderAddress($order_id);
-                return $result;
-            } catch (Exception $e) {
-                echo 'Exception when calling OrdersV0Api->getOrderAddress: ', $e->getMessage(), PHP_EOL;
-            }
-
-        }
-
-        public function fn_GetOrders($startDateTime, $endDateTime){
-            $apiInstance = new OrdersV0Api($this->config);
-            $marketplace_ids = array(US_MARKETPLACE); // string[] | A list of MarketplaceId values. Used to select orders that were placed in the specified marketplaces. See the [Selling Partner API Developer Guide](https://developer-docs.amazon.com/sp-api/docs/marketplace-ids) for a complete list of marketplaceId values.
-            $created_after = null; // string | A date used for selecting orders created after (or at) a specified time. Only orders placed after the specified time are returned. Either the CreatedAfter parameter or the LastUpdatedAfter parameter is required. Both cannot be empty. The date must be in ISO 8601 format.
-            $created_before = null; // string | A date used for selecting orders created before (or at) a specified time. Only orders placed before the specified time are returned. The date must be in ISO 8601 format.
-            $last_updated_after = $startDateTime; // string | A date used for selecting orders that were last updated after (or at) a specified time. An update is defined as any change in order status, including the creation of a new order. Includes updates made by Amazon and by the seller. The date must be in ISO 8601 format.
-            $last_updated_before = null; // string | A date used for selecting orders that were last updated before (or at) a specified time. An update is defined as any change in order status, including the creation of a new order. Includes updates made by Amazon and by the seller. The date must be in ISO 8601 format.
-            $order_statuses = array('Shipped', 'Pending', 'Unshipped'); // string[] | A list of `OrderStatus` values used to filter the results.
-            //     // **Possible values:**
-            //     // - `PendingAvailability` (This status is available for pre-orders only. The order has been placed, payment has not been authorized, and the release date of the item is in the future.)
-            //     // - `Pending` (The order has been placed but payment has not been authorized.)
-            //     // - `Unshipped` (Payment has been authorized and the order is ready for shipment, but no items in the order have been shipped.)
-            //     // - `PartiallyShipped` (One or more, but not all, items in the order have been shipped.)
-            //     // - `Shipped` (All items in the order have been shipped.)
-            //     // - `InvoiceUnconfirmed` (All items in the order have been shipped. The seller has not yet given confirmation to Amazon that the invoice has been shipped to the buyer.)
-            //     // - `Canceled` (The order has been canceled.)
-            //     // - `Unfulfillable` (The order cannot be fulfilled. This state applies only to Multi-Channel Fulfillment orders.)
-            // $fulfillment_channels = array('fulfillment_channels_example'); // string[] | A list that indicates how an order was fulfilled. Filters the results by fulfillment channel. Possible values: AFN (Fulfillment by Amazon); MFN (Fulfilled by the seller).
-            // $payment_methods = array('payment_methods_example'); // string[] | A list of payment method values. Used to select orders paid using the specified payment methods. Possible values: COD (Cash on delivery); CVS (Convenience store payment); Other (Any payment method other than COD or CVS).
-            // $buyer_email = 'buyer_email_example'; // string | The email address of a buyer. Used to select orders that contain the specified email address.
-            // $seller_order_id = 'seller_order_id_example'; // string | An order identifier that is specified by the seller. Used to select only the orders that match the order identifier. If SellerOrderId is specified, then FulfillmentChannels, OrderStatuses, PaymentMethod, LastUpdatedAfter, LastUpdatedBefore, and BuyerEmail cannot be specified.
-            $max_results_per_page = 100; // int | A number that indicates the maximum number of orders that can be returned per page. Value must be 1 - 100. Default 100.
-            // $easy_ship_shipment_statuses = array('easy_ship_shipment_statuses_example'); // string[] | A list of `EasyShipShipmentStatus` values. Used to select Easy Ship orders with statuses that match the specified values. If `EasyShipShipmentStatus` is specified, only Amazon Easy Ship orders are returned.
-            //     // **Possible values:**
-            //     // - `PendingSchedule` (The package is awaiting the schedule for pick-up.)
-            //     // - `PendingPickUp` (Amazon has not yet picked up the package from the seller.)
-            //     // - `PendingDropOff` (The seller will deliver the package to the carrier.)
-            //     // - `LabelCanceled` (The seller canceled the pickup.)
-            //     // - `PickedUp` (Amazon has picked up the package from the seller.)
-            //     // - `DroppedOff` (The package is delivered to the carrier by the seller.)
-            //     // - `AtOriginFC` (The packaged is at the origin fulfillment center.)
-            //     // - `AtDestinationFC` (The package is at the destination fulfillment center.)
-            //     // - `Delivered` (The package has been delivered.)
-            //     // - `RejectedByBuyer` (The package has been rejected by the buyer.)
-            //     // - `Undeliverable` (The package cannot be delivered.)
-            //     // - `ReturningToSeller` (The package was not delivered and is being returned to the seller.)
-            //     // - `ReturnedToSeller` (The package was not delivered and was returned to the seller.)
-            //     // - `Lost` (The package is lost.)
-            //     // - `OutForDelivery` (The package is out for delivery.)
-            //     // - `Damaged` (The package was damaged by the carrier.)
-            // $electronic_invoice_statuses = array('electronic_invoice_statuses_example'); // string[] | A list of `ElectronicInvoiceStatus` values. Used to select orders with electronic invoice statuses that match the specified values.
-            //     // **Possible values:**
-            //     // - `NotRequired` (Electronic invoice submission is not required for this order.)
-            //     // - `NotFound` (The electronic invoice was not submitted for this order.)
-            //     // - `Processing` (The electronic invoice is being processed for this order.)
-            //     // - `Errored` (The last submitted electronic invoice was rejected for this order.)
-            //     // - `Accepted` (The last submitted electronic invoice was submitted and accepted.)
-            // $next_token = 'next_token_example'; // string | A string token returned in the response of your previous request.
-            // $amazon_order_ids = array('amazon_order_ids_example'); // string[] | A list of AmazonOrderId values. An AmazonOrderId is an Amazon-defined order identifier, in 3-7-7 format.
-            // $actual_fulfillment_supply_source_id = 'actual_fulfillment_supply_source_id_example'; // string | Denotes the recommended sourceId where the order should be fulfilled from.
-            // $is_ispu = True; // bool | When true, this order is marked to be picked up from a store rather than delivered.
-            // $store_chain_store_id = 'store_chain_store_id_example'; // string | The store chain store identifier. Linked to a specific store in a store chain.
-            // $item_approval_types = array(new \SellingPartnerApi\Model\OrdersV0\\SellingPartnerApi\Model\OrdersV0\ItemApprovalType()); // \SellingPartnerApi\Model\OrdersV0\ItemApprovalType[] | When set, only return orders that contain items which approval type is contained in the specified approval types.
-            // $item_approval_status = array(new \SellingPartnerApi\Model\OrdersV0\\SellingPartnerApi\Model\OrdersV0\ItemApprovalStatus()); // \SellingPartnerApi\Model\OrdersV0\ItemApprovalStatus[] | When set, only return orders that contain items which approval status is contained in the specified approval status.
-            // $data_elements = array('data_elements_example'); // string[] | An array of restricted order data elements to retrieve (valid array elements are \"buyerInfo\" and \"shippingAddress\")
-
-            try {
-                $result = $apiInstance->getOrders($marketplace_ids, $created_after, $created_before, $last_updated_after, $last_updated_before, $order_statuses, null, null, null, null, $max_results_per_page);
-                print('<pre>');
-                var_dump($result);
-                print('</pre>');
-                $orders = $result->getPayload()->getOrders();
-                if (count($orders) !== 0){
-                    $currentDateTime = new DateTime('UTC');
-                    $currentDateTime = $currentDateTime->format('Y-m-d_H-i-s');
-                    $fh = fopen("get_ordersapi_$currentDateTime.csv", 'w+');
-                    // $fh = fopen('fileout.csv', 'w+');
-                    $field = array('No', );
-                    foreach ($orders as $i => $order){
-                        $value = array($i+1);
-                        $jsonDecoded = json_decode($order, true);
-                        if (is_array($jsonDecoded)) {
-                            foreach ($jsonDecoded as $key => $line) {
-                                if (is_array($line)){
-                                    foreach ($line as $key1 => $line1) {
-                                        if ($i === 0){
-                                            array_push($field, $key.'_'.$key1);
-                                        }
-                                        if (gettype($line1) == 'boolean'){
-                                            array_push($value, $line ? 'TRUE' : 'FALSE');
-                                        }
-                                        else{
-                                            array_push($value, $line1);
-                                        }
-                                    }
-                                }
-                                else {
-                                    if ($i === 0){
-                                        array_push($field, $key);
-                                    }
-                                    if (gettype($line) == 'boolean'){
-                                        array_push($value, $line ? 'TRUE' : 'FALSE');
-                                    }
-                                    else{
-                                        array_push($value, $line);
-                                    }
-                                }
-                            }
-                            // print
-                            if ($i === 0){
-                                fputcsv($fh, $field);
-                            }
-                            fputcsv($fh, $value);
-                        }
-                    }
-                    fclose($fh);
-                }
-            } catch (Exception $e) {
-                echo 'Exception when calling OrdersV0Api->getOrders: ', $e->getMessage(), PHP_EOL;
-            }
-
-            
-        }
-
-        public function fn_GetOrderReports($startDateTime, $endDateTime){
-            // step 1
-            $report_option = NULL;
-            $report_type = 'GET_FLAT_FILE_ALL_ORDERS_DATA_BY_LAST_UPDATE_GENERAL';
-            $marketplace_ids = array(US_MARKETPLACE);
-            $data_start_time = $startDateTime;
-            $data_end_time = $endDateTime;
-
-            $result = $this->fn_CreateReport($marketplace_ids, $report_option, $report_type, $data_start_time, $data_end_time);
-
-            // step 2
-            $report_id = $result->getReportId();
-
-            $result = $this->fn_GetReport($report_id);
-            $processingStatus = $result->getProcessingStatus();
-            while (strcmp($processingStatus, 'DONE') != 0) {
-                if (strcmp($processingStatus, 'CANCELLED') != 0 && strcmp($processingStatus, 'FATAL') != 0) {
-                    usleep(500);
-                    $result = $this->fn_GetReport($report_id);
-                    $processingStatus = $result->getProcessingStatus();
-                }
-                else {
-                    return;
-                }
-            }
-
-            // step 3
-            $report_document_id = $result->getReportDocumentId();
-            $report_type = $result->getReportType();
-
-            $result = $this->fn_GetReportDocument($report_document_id, $report_type);
-            print('<pre>');
-            var_dump($result);
-            print('</pre>');
-            // step 4
-            $url = $result->getUrl();
-            $compression_algorithm = $result->getCompressionAlgorithm();
-
-            $result = $this->fn_DownloadReportDocument($url, $compression_algorithm);
-            print('<pre>');
-            var_dump(count($result));
-            print('</pre>');
-            // save csv
-            $currentDateTime = new DateTime('UTC');
-            $currentDateTime = $currentDateTime->format('Y-m-d_H-i-s');
-            $fh = fopen("get_report_api_$currentDateTime.csv", 'w+');
-            $header = array('No', 'order-id',  'order-status', 'order-item-id', 'purchase-date', 'payments-date', 
-            'buyer-email', 'buyer-name', 'buyer-phone-number', 'buyer-phone-number', 'sku', 
-            'product-name', 'quantity-purchased', 'currency', 'item-price', 'item-tax', 'shipping-price', 
-            'shipping-tax', 'ship-service-level', 'ship-service-name', 'recipient-name', 'ship-address-1', 
-            'ship-address-2', 'ship-address-3', 'address-type', 'ship-city', 'ship-state', 
-            'ship-postal-code', 'ship-country', 'item-promotion-discount', 'item-promotion-id', 
-            'ship-promotion-discount', 'ship-promotion-id', 'delivery-start-date', 'delivery-end-date', 
-            'delivery-time-zone', 'delivery-Instructions', 'sales-channel', 'earliest-ship-date', 
-            'latest-ship-date', 'earliest-delivery-date', 'latest-delivery-date', 
-            'is-business-order', 'purchase-order-number', 'price-designation', 
-            'is-prime', 'buyer-company-name', 'signature-confirmation-recommended');
-            fputcsv($fh, $header);
-            foreach ($result as $i => $order){
-                $row = array($i+1);
-                // $order_temp = $this->fn_GetOrder($order['amazon-order-id'])->getPayload();
-                // if ($order_temp == null){
-                //     continue;
-                // }
-                // $order_items_list = $this->fn_GetOrderItems($order['amazon-order-id']);
-                // $order_item = $order_items_list->getPayload()->getOrderItems()[0];
-                // print('<pre>');
-                // var_dump($order_temp);
-                // var_dump($order_item);
-                // var_dump($order);
-                // print('</pre>');
-                $row[] = $order['amazon-order-id']; // order-id
-                $row[] = $order['order-status']; // order-status
-                // $row[] = $order_item->getOrderItemId(); // order-item-id
-                $row[] = '';
-                $row[] = $order['purchase-date']; // purchase-date
-                $row[] = $order['last-updated-date']; // last-updated-date
-                $row[] = ''; // payments-date
-                // $row[] = $order_temp->getBuyerInfo()->getBuyerEmail(); // buyer-email
-                // $row[] = $order_temp->getBuyerInfo()->getBuyerName(); // buyer-name
-                $row[] = '';$row[] = '';
-                $row[] = ''; // buyer-phone-number
-                // $row[] = $order_temp->getDefaultShipFromLocationAddress()->getPhone(); // buyer-phone-number
-                // $row[] = $order_item->getSellerSku(); // sku
-                $row[] = '';$row[] = '';
-                $row[] = $order['product-name']; // product-name
-                $row[] = $order['quantity']; // quantity-purchased
-                $row[] = $order['currency']; // currency
-                $row[] = $order['item-price']; // item-price
-                $row[] = $order['item-tax']; // item-tax
-                $row[] = $order['shipping-price']; // shipping-price
-                $row[] = $order['shipping-tax']; // shipping-tax
-                $row[] = $order['ship-service-level']; // ship-service-level
-                // $row[] = $order_temp->getShipServiceLevel(); // ship-service-name
-                $row[] = '';
-                $row[] = ''; // recipient-name
-                // $row[] = $order_temp->getDefaultShipFromLocationAddress()->getAddressLine1(); // ship-address-1
-                // $row[] = $order_temp->getDefaultShipFromLocationAddress()->getAddressLine2(); // ship-address-2
-                // $row[] = $order_temp->getDefaultShipFromLocationAddress()->getAddressLine3(); // ship-address-3
-                $row[] = '';$row[] = '';$row[] = '';
-                $row[] = $order['address-type']; // address-type
-                $row[] = $order['ship-city']; // ship-city
-                $row[] = $order['ship-state']; // ship-state
-                $row[] = $order['ship-postal-code']; // ship-postal-code
-                $row[] = $order['ship-country']; // ship-country
-                $row[] = $order['item-promotion-discount']; // item-promotion-discount
-                $row[] = ''; // item-promotion-id
-                $row[] = $order['ship-promotion-discount']; // ship-promotion-discount
-                $row[] = ''; // ship-promotion-id
-                // $row[] = $order_item->getScheduledDeliveryStartDate(); // delivery-start-date
-                // $row[] = $order_item->getScheduledDeliveryEndDate(); // delivery-end-date
-                $row[] = '';$row[] = '';
-                $row[] = ''; // delivery-time-zone
-                $row[] = ''; // delivery-Instructions
-                $row[] = $order['sales-channel'];
-                // $row[] = $order_temp->getEarliestShipDate(); // earliest-ship-date
-                // $row[] = $order_temp->getLatestShipDate(); // latest-ship-date
-                // $row[] = $order_temp->getEarliestDeliveryDate(); // earliest-delivery-date
-                // $row[] = $order_temp->getLatestDeliveryDate(); // latest-delivery-date
-                $row[] = '';$row[] = '';$row[] = '';$row[] = '';
-                $row[] = $order['is-business-order']; // $order_temp->getIsBusinessOrder(); // is-business-order
-                $row[] = $order['purchase-order-number']; // purchase-order-number
-                $row[] = $order['price-designation']; // price-designation
-                // $row[] = $order_temp->getIsPrime() ? 'TRUE' : 'FALSE'; // is-prime
-                $row[] = '';
-                $row[] = $order['buyer-company-name']; // buyer-company-name
-                // $row[] = $order['signature-confirmation-recommended']; // signature-confirmation-recommended
-                $row[] = ''; // signature-confirmation-recommended
-
-                fputcsv($fh, $row);
-                // break;
-            }
-            fclose($fh);
-        }
-
         public function fn_GetPendingOrders($startDateTime, $endDateTime){
             // step 1
             $report_option = NULL;
-            $report_type = 'GET_FLAT_FILE_ALL_ORDERS_DATA_BY_LAST_UPDATE_GENERAL';
+            $report_type = ReportType::GET_FLAT_FILE_ALL_ORDERS_DATA_BY_LAST_UPDATE_GENERAL;
             $marketplace_ids = array(US_MARKETPLACE);
             $data_start_time = $startDateTime;
             $data_end_time = $endDateTime;
-
-            $result = $this->fn_CreateReport($marketplace_ids, $report_option, $report_type, $data_start_time, $data_end_time);
+            $result = $this->fn_CreateReport($marketplace_ids, $report_option, $report_type['name'], $data_start_time, $data_end_time);
 
             // step 2
             $report_id = $result->getReportId();
-
             $result = $this->fn_GetReport($report_id);
             $processingStatus = $result->getProcessingStatus();
             while (strcmp($processingStatus, 'DONE') != 0) {
@@ -618,67 +132,50 @@
 
             // step 3
             $report_document_id = $result->getReportDocumentId();
-            $report_type = $result->getReportType();
+            $result = $this->fn_GetReportDocument($report_document_id, $report_type['name']);
 
-            $result = $this->fn_GetReportDocument($report_document_id, $report_type);
-            print('<pre>');
-            var_dump($result);
-            print('</pre>');
             // step 4
-            $url = $result->getUrl();
-            $compression_algorithm = $result->getCompressionAlgorithm();
+            $docToDownload = new Document($result, $report_type);
+            $docToDownload->download();
+            $result = $docToDownload->getData();
 
-            $result = $this->fn_DownloadReportDocument($url, $compression_algorithm);
-            print('<pre>');
-            var_dump(count($result));
-            print('</pre>');
             // save csv
             $currentDateTime = new DateTime('UTC');
             $currentDateTime = $currentDateTime->format('Y-m-d_H-i-s');
             $fh = fopen("pending_orders_$currentDateTime.csv", 'w+');
             $header = array('No', 'order-id',  'order-status', 'order-item-id', 'purchase-date', 'payments-date', 
-            'buyer-email', 'buyer-name', 'buyer-phone-number', 'buyer-phone-number', 'sku', 
-            'product-name', 'quantity-purchased', 'currency', 'item-price', 'item-tax', 'shipping-price', 
-            'shipping-tax', 'ship-service-level', 'ship-service-name', 'recipient-name', 'ship-address-1', 
-            'ship-address-2', 'ship-address-3', 'address-type', 'ship-city', 'ship-state', 
-            'ship-postal-code', 'ship-country', 'item-promotion-discount', 'item-promotion-id', 
-            'ship-promotion-discount', 'ship-promotion-id', 'delivery-start-date', 'delivery-end-date', 
-            'delivery-time-zone', 'delivery-Instructions', 'sales-channel', 'earliest-ship-date', 
-            'latest-ship-date', 'earliest-delivery-date', 'latest-delivery-date', 
-            'is-business-order', 'purchase-order-number', 'price-designation', 
-            'is-prime', 'buyer-company-name', 'signature-confirmation-recommended');
+                'buyer-email', 'buyer-name', 'buyer-phone-number', 'buyer-phone-number', 'sku', 
+                'product-name', 'quantity-purchased', 'currency', 'item-price', 'item-tax', 'shipping-price', 
+                'shipping-tax', 'ship-service-level', 'ship-service-name', 'recipient-name', 'ship-address-1', 
+                'ship-address-2', 'ship-address-3', 'address-type', 'ship-city', 'ship-state', 
+                'ship-postal-code', 'ship-country', 'item-promotion-discount', 'item-promotion-id', 
+                'ship-promotion-discount', 'ship-promotion-id', 'delivery-start-date', 'delivery-end-date', 
+                'delivery-time-zone', 'delivery-Instructions', 'sales-channel', 'earliest-ship-date', 
+                'latest-ship-date', 'earliest-delivery-date', 'latest-delivery-date', 
+                'is-business-order', 'purchase-order-number', 'price-designation', 
+                'is-prime', 'buyer-company-name', 'signature-confirmation-recommended');
             fputcsv($fh, $header);
             $i = 0;
             foreach ($result as $order){
-                if ($order['order-status'] != 'Pending'){
+                if ($order['order-status'] != 'Pending' && $order['order-status'] != 'Unshipped'){
                     continue;
                 }
                 $row = array($i + 1);
                 $i++;
+                usleep(10000);
                 $order_temp = $this->fn_GetOrder($order['amazon-order-id'])->getPayload();
-                // if ($order_temp == null){
-                //     continue;
-                // }
                 $order_items_list = $this->fn_GetOrderItems($order['amazon-order-id']);
                 $order_item = $order_items_list->getPayload()->getOrderItems()[0];
-                // print('<pre>');
-                // var_dump($order_temp);
-                // var_dump($order_item);
-                // var_dump($order);
-                // print('</pre>');
                 $row[] = $order['amazon-order-id']; // order-id
                 $row[] = $order['order-status']; // order-status
                 $row[] = $order_item->getOrderItemId(); // order-item-id
                 $row[] = $order['purchase-date']; // purchase-date
-                $row[] = $order['last-updated-date']; // last-updated-date
                 $row[] = ''; // payments-date
                 $row[] = $order_temp->getBuyerInfo()->getBuyerEmail(); // buyer-email
                 $row[] = $order_temp->getBuyerInfo()->getBuyerName(); // buyer-name
-                // $row[] = '';$row[] = '';
                 $row[] = ''; // buyer-phone-number
-                // $row[] = $order_temp->getDefaultShipFromLocationAddress()->getPhone(); // buyer-phone-number
-                // $row[] = $order_item->getSellerSku(); // sku
-                $row[] = '';$row[] = '';
+                $row[] = $order_temp->getDefaultShipFromLocationAddress()->getPhone(); // buyer-phone-number
+                $row[] = $order_item->getSellerSku(); // sku
                 $row[] = $order['product-name']; // product-name
                 $row[] = $order['quantity']; // quantity-purchased
                 $row[] = $order['currency']; // currency
@@ -688,12 +185,10 @@
                 $row[] = $order['shipping-tax']; // shipping-tax
                 $row[] = $order['ship-service-level']; // ship-service-level
                 $row[] = $order_temp->getShipServiceLevel(); // ship-service-name
-                // $row[] = '';
                 $row[] = ''; // recipient-name
                 $row[] = $order_temp->getDefaultShipFromLocationAddress()->getAddressLine1(); // ship-address-1
                 $row[] = $order_temp->getDefaultShipFromLocationAddress()->getAddressLine2(); // ship-address-2
                 $row[] = $order_temp->getDefaultShipFromLocationAddress()->getAddressLine3(); // ship-address-3
-                // $row[] = '';$row[] = '';$row[] = '';
                 $row[] = $order['address-type']; // address-type
                 $row[] = $order['ship-city']; // ship-city
                 $row[] = $order['ship-state']; // ship-state
@@ -712,12 +207,10 @@
                 $row[] = $order_temp->getLatestShipDate(); // latest-ship-date
                 $row[] = $order_temp->getEarliestDeliveryDate(); // earliest-delivery-date
                 $row[] = $order_temp->getLatestDeliveryDate(); // latest-delivery-date
-                // $row[] = '';$row[] = '';$row[] = '';$row[] = '';
                 $row[] = $order['is-business-order']; // $order_temp->getIsBusinessOrder(); // is-business-order
                 $row[] = $order['purchase-order-number']; // purchase-order-number
                 $row[] = $order['price-designation']; // price-designation
                 $row[] = $order_temp->getIsPrime() ? 'TRUE' : 'FALSE'; // is-prime
-                // $row[] = '';
                 $row[] = $order['buyer-company-name']; // buyer-company-name
                 $row[] = $order['signature-confirmation-recommended']; // signature-confirmation-recommended
 
@@ -729,10 +222,9 @@
         public function fn_GetShippedOrders($startDateTime, $endDateTime){
             // step 1
             $report_option = NULL;
-            $report_type = 'GET_FLAT_FILE_ALL_ORDERS_DATA_BY_LAST_UPDATE_GENERAL';
+            $report_type = ReportType::GET_FLAT_FILE_ALL_ORDERS_DATA_BY_LAST_UPDATE_GENERAL;
             $marketplace_ids = array(US_MARKETPLACE);
             $order_result = array();
-
             $data_end_time = $endDateTime;
             $startTime = new DateTime($startDateTime);
             $end = false;
@@ -746,7 +238,7 @@
                     $data_start_time = $startDateTime;
                     $end = true;
                 }
-                $result = $this->fn_CreateReport($marketplace_ids, $report_option, $report_type, $data_start_time, $data_end_time);
+                $result = $this->fn_CreateReport($marketplace_ids, $report_option, $report_type['name'], $data_start_time, $data_end_time);
 
                 // step 2
                 $report_id = $result->getReportId();
@@ -762,20 +254,21 @@
                         return;
                     }
                 }
-
+                
                 // step 3
                 $report_document_id = $result->getReportDocumentId();
-                $report_type = $result->getReportType();
-                $result = $this->fn_GetReportDocument($report_document_id, $report_type);
-                
+                $result = $this->fn_GetReportDocument($report_document_id, $report_type['name']);
+
                 // step 4
-                $url = $result->getUrl();
-                $compression_algorithm = $result->getCompressionAlgorithm();
-                $result = $this->fn_DownloadReportDocument($url, $compression_algorithm);                
+                $docToDownload = new Document($result, $report_type);
+                $docToDownload->download();
+                $result = $docToDownload->getData();
+
                 $order_result = array_merge($order_result, $result);
 
                 $data_end_time = $data_start_time;
             } while ($end == false);
+
             // save csv
             $currentDateTime = new DateTime('UTC');
             $currentDateTime = $currentDateTime->format('Y-m-d_H-i-s');
@@ -793,7 +286,7 @@
                 if ($j === 0){
                     fputcsv($fh, $header);
                 }
-                if ($order['order-status'] != 'Shipped' && $order['order-status'] != 'Unshipped'){
+                if ($order['order-status'] != 'Shipped'){
                     continue;
                 }
                 $i++;
@@ -805,12 +298,12 @@
         public function fn_GetInventoryReports($startDateTime, $endDateTime){
             // step 1
             $report_option = '"custom":"true"';
-            $report_type = 'GET_MERCHANT_LISTINGS_ALL_DATA';
+            $report_type = ReportType::GET_MERCHANT_LISTINGS_ALL_DATA;
             $marketplace_ids = array(US_MARKETPLACE);
             $data_start_time = $startDateTime;
             $data_end_time = NULL;
 
-            $result = $this->fn_CreateReport($marketplace_ids, $report_option, $report_type, $data_start_time, $data_end_time);
+            $result = $this->fn_CreateReport($marketplace_ids, $report_option, $report_type['name'], $data_start_time, $data_end_time);
 
             // step 2
             $report_id = $result->getReportId();
@@ -830,24 +323,17 @@
 
             // step 3
             $report_document_id = $result->getReportDocumentId();
-            $report_type = $result->getReportType();
+            $result = $this->fn_GetReportDocument($report_document_id, $report_type['name']);
 
-            $result = $this->fn_GetReportDocument($report_document_id, $report_type);
-            print('<pre>');
-            var_dump($result);
-            print('</pre>');
             // step 4
-            $url = $result->getUrl();
-            $compression_algorithm = $result->getCompressionAlgorithm();
-
-            $result = $this->fn_DownloadReportDocument($url, $compression_algorithm);
-            print('<pre>');
-            var_dump($result);
-            print('</pre>');
+            $docToDownload = new Document($result, $report_type);
+            $docToDownload->download();
+            $result = $docToDownload->getData();
+            
             // save csv
             $currentDateTime = new DateTime('UTC');
             $currentDateTime = $currentDateTime->format('Y-m-d_H-i-s');
-            $fh = fopen("$currentDateTime.csv", 'w+');
+            $fh = fopen("inventory_report_$currentDateTime.csv", 'w+');
             $field = array('No');
             foreach ($result as $i => $order){
                 $row = array($i+1);
@@ -864,96 +350,5 @@
             }
             fclose($fh);
         }
-
-        public function fn_ReportFeed($startDateTime, $endDateTime){
-            // step 1
-            $result = $this->fn_CreateFeedDocument();
-
-            $feed_document_id = $result->getFeedDocumentId();
-            $feed_document_url = $result->getUrl();
-
-            print('<pre>');
-            var_dump($feed_document_id);
-            var_dump($feed_document_url);
-            print('</pre>');
-
-            // step 2
-            $filename = 'amazon_orders.csv';
-            $feed = $this->fn_ConstructFeed($filename);
-
-            print('<pre>');
-            print_r($feed);
-            print('</pre>');
-
-            // step 3
-            $result = $this->fn_UploadFeedDocument($feed_document_url, './test.xml');
-
-            print('<pre>');
-            var_dump($result);
-            print('</pre>');
-
-            // step 4    POST_FLAT_FILE_CONVERGENCE_LISTINGS_DATA POST_ORDER_FULFILLMENT_DATA
-            $result = $this->fn_CreateFeed($feed_document_id, 'POST_FULFILLMENT_ORDER_REQUEST_DATA', US_MARKETPLACE);
-            $feed_id = $result->getFeedId();
-
-            // step 5
-            
-            $result = $this->fn_GetFeed($feed_id);
-            $processingStatus = $result->getProcessingStatus();
-            while (strcmp($processingStatus, 'DONE') != 0) {
-                if (strcmp($processingStatus, 'CANCELLED') != 0 && strcmp($processingStatus, 'FATAL') != 0){
-                    usleep(500);
-                    $result = $this->fn_GetFeed($feed_id);
-                    $processingStatus = $result->getProcessingStatus();
-                }
-                else{
-                    return;
-                }
-            }
-            $feed_document_id = $result->getResultFeedDocumentId();
-
-            // step 6
-            $result = $this->fn_GetFeedDocumentation($feed_document_id);
-            $url = $result->getUrl();
-            $compressionAlgorithm = $result->getCompressionAlgorithm();
-
-            print('<pre>');
-            var_dump($url);
-            var_dump($compressionAlgorithm);
-            print('</pre>');
-
-            // step 7
-            $result = $this->fn_DownloadFeedProcessingReport($url, $compressionAlgorithm);
-
-            print('<pre>');
-            var_dump($result);
-            print('</pre>');
-        }
-
     }
-
-    set_time_limit (0);
-    $currentDateTime = new DateTime('UTC');
-    $endDateTime = $currentDateTime->format('Y-m-d\TH:i:s.000\Z');
-    $amazon = new Amazon();
-
-    // $amazon->fn_GetOrders($startDateTime, $endDateTime);
-
-    // Order Module 1
-    // $amazon->fn_GetOrderReports($startDateTime, $endDateTime);
-    $startDateTime = date('Y-m-d\TH:i:s.000\Z',strtotime('- 15 days'));
-    $amazon->fn_GetPendingOrders($startDateTime, $endDateTime);
-    
-    // $startDateTime = date('Y-m-d\TH:i:s.000\Z',strtotime('- 75 days'));
-    // $amazon->fn_GetShippedOrders($startDateTime, $endDateTime);
-    
-    // Order Module 2
-    // $amazon->fn_ReportFeed($startDateTime, $endDateTime);
-
-    // Inventory Module 1
-    // $amazon->fn_GetInventoryReports($startDateTime, $endDateTime);
-
-    // Inventory Module 2
-    // $amazon->fn_ReportFeed($startDateTime, $endDateTime);
-
 ?>
