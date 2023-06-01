@@ -1,0 +1,2 @@
+sku	price	minimum-seller-allowed-price	maximum-seller-allowed-price	quantity	add-delete	handling-time	merchant_shipping_group_name
+48215-14	54.31	40.00	99.70	0	a	20	Flat995Template

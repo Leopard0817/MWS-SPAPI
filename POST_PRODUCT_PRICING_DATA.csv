@@ -1,0 +1,3 @@
+SKU,Price,MinimumSellerAllowedPrice,MaximumSellerAllowedPrice,BusinessPrice,QuantityPriceType,QuantityLowerBound1,QuantityPrice1,QuantityLowerBound2,QuantityPrice2,QuantityLowerBound3,QuantityPrice3,PricingAction
+12189CW-135,182.37,142.89,456.75,175.46,FIXED,2,171.33,4,165.85,43,160.96,
+41586-38,66.67,50.35,119.46,64.95,,,,,,,,delete quantity_price

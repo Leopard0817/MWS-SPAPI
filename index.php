@@ -109,7 +109,12 @@
 
         private function fn_CreateFeedDocument($feed_type){
             $apiInstance = new FeedsV20210630Api($this->config);
+
             $body = new CreateFeedDocumentSpecification(['content_type' => $feed_type['contentType']]);
+
+            print('<pre> content type:');
+            var_dump($feed_type['contentType']);
+            print('</pre>');
             try {
                 $result = $apiInstance->createFeedDocument($body);
                 return $result;
@@ -137,6 +142,78 @@
             );
             $MessageType = $document->appendChild(
                 $dom->createElement('MessageType', 'OrderFulfillment')
+            );
+            // All the magic here
+            foreach($csv as $row) {
+                
+                $shipping_carrier = explode("|", $row['shipping_carrier']);
+                
+                $Message = $document->appendChild(
+                    $dom->createElement('Message')
+                );
+                //@TODO MessageID is taking the order for now, its not necessary
+                $messageid = $dom->createElement('MessageID', substr($row['order_no'], -7));
+                $order = $dom->createElement('OrderFulfillment');
+
+                $order->appendChild(
+                    $dom->createElement('AmazonOrderID', $row['order_no'])
+                );
+                $order->appendChild(
+                    $dom->createElement('FulfillmentDate', date("Y-m-d\TH:i:s-00:00", strtotime($row['ship_date'])))
+                );
+
+                $orderdata = $order->appendChild(
+                    $dom->createElement('FulfillmentData')
+                );
+                
+                //New Amazon requirement 05/24/21 - If carrier is "Other" add Carrier Code
+                if (count($shipping_carrier) > 1 ) {
+                    $orderdata->appendChild(
+                        $dom->createElement('CarrierCode', $shipping_carrier[0])
+                    );
+                    $orderdata->appendChild(
+                        $dom->createElement('CarrierName', $shipping_carrier[1])
+                    );
+                } else {
+                    $orderdata->appendChild(
+                        $dom->createElement('CarrierName', $row['shipping_carrier'])
+                    );
+                }
+                
+                $orderdata->appendChild(
+                    $dom->createElement('ShippingMethod', $row['shipping_method'])
+                );
+                $orderdata->appendChild(
+                    $dom->createElement('ShipperTrackingNumber', $row['tracking_number'])
+                );
+                    
+                
+                $Message->appendChild($messageid);
+                $Message->appendChild($order);
+            };
+            $dom->save('order_feed.xml');
+            return $dom->saveXML();
+        }
+
+        private function fn_CreateInventoryPriceXML(array $csv) {
+            $dom  = new DOMDocument("1.0", "UTF-8");
+            $dom->formatOutput = TRUE;
+            $document = $dom->appendChild(
+                $dom->createElement('AmazonEnvelope')
+            );
+            $document->setAttribute("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance");
+            $document->setAttribute("xsi:noNamespaceSchemaLocation", "amznenvelope.xsd");
+            $header = $document->appendChild(
+                $dom->createElement('Header')
+            );
+            $headerContent = $header->appendChild(
+                $dom->createElement('DocumentVersion', '1.01')
+            );
+            $headerContent = $header->appendChild(
+                $dom->createElement('MerchantIdentifier', 'DEI_APP')
+            );
+            $MessageType = $document->appendChild(
+                $dom->createElement('MessageType', 'Price')
             );
             // All the magic here
             foreach($csv as $row) {
@@ -376,8 +453,9 @@
         }
 
         private function fn_UploadFeedDocument($feed_document_info, $feed_type, $feed){
+            $feedContents = file_get_contents($feed);
             $docToUpload = new Document($feed_document_info, $feed_type);
-            $docToUpload->upload($feed);
+            $docToUpload->upload($feedContents);
         }
 
         private function fn_CreateFeed($feedDocumentId, $feedType, $marketplaceId){
@@ -446,12 +524,13 @@
             // step 3
             $report_document_id = $result->getReportDocumentId();
             $result = $this->fn_GetReportDocument($report_document_id, $report_type['name']);
-
+            
+            
             // step 4
             $docToDownload = new Document($result, $report_type);
             $docToDownload->download();
             $result = $docToDownload->getData();
-
+            
             // save csv
             $currentDateTime = new DateTime('UTC');
             $currentDateTime = $currentDateTime->format('Y-m-d_H-i-s');
@@ -475,7 +554,7 @@
                 }
                 $row = array($i + 1);
                 $i++;
-                usleep(10000);
+                usleep(60000);
                 $order_temp = $this->fn_GetOrder($order['amazon-order-id'])->getPayload();
                 $order_items_list = $this->fn_GetOrderItems($order['amazon-order-id']);
                 $order_item = $order_items_list->getPayload()->getOrderItems()[0];
@@ -487,7 +566,11 @@
                 $row[] = $order_temp->getBuyerInfo()->getBuyerEmail(); // buyer-email
                 $row[] = $order_temp->getBuyerInfo()->getBuyerName(); // buyer-name
                 $row[] = ''; // buyer-phone-number
-                $row[] = $order_temp->getDefaultShipFromLocationAddress()->getPhone(); // buyer-phone-number
+                if(!!$order_temp->getDefaultShipFromLocationAddress()) {
+                    $row[] = $order_temp->getDefaultShipFromLocationAddress()->getPhone(); // buyer-phone-number
+                } else {
+                    $row[] = '';
+                }
                 $row[] = $order_item->getSellerSku(); // sku
                 $row[] = $order['product-name']; // product-name
                 $row[] = $order['quantity']; // quantity-purchased
@@ -499,9 +582,15 @@
                 $row[] = $order['ship-service-level']; // ship-service-level
                 $row[] = $order_temp->getShipServiceLevel(); // ship-service-name
                 $row[] = ''; // recipient-name
-                $row[] = $order_temp->getDefaultShipFromLocationAddress()->getAddressLine1(); // ship-address-1
-                $row[] = $order_temp->getDefaultShipFromLocationAddress()->getAddressLine2(); // ship-address-2
-                $row[] = $order_temp->getDefaultShipFromLocationAddress()->getAddressLine3(); // ship-address-3
+                if(!!$order_temp->getDefaultShipFromLocationAddress()) {
+                    $row[] = $order_temp->getDefaultShipFromLocationAddress()->getAddressLine1(); // ship-address-1
+                    $row[] = $order_temp->getDefaultShipFromLocationAddress()->getAddressLine2(); // ship-address-2
+                    $row[] = $order_temp->getDefaultShipFromLocationAddress()->getAddressLine3(); // ship-address-3
+                } else {
+                    $row[] = '';
+                    $row[] = '';
+                    $row[] = '';
+                }
                 $row[] = $order['address-type']; // address-type
                 $row[] = $order['ship-city']; // ship-city
                 $row[] = $order['ship-state']; // ship-state
@@ -719,17 +808,25 @@
         }
 
         public function fn_InventoryFeed(){
+            $file_path = __DIR__ . '/POST_FLAT_FILE_INVLOADER_DATA.txt';
+            $feedContents = file_get_contents($file_path);
+
+            if($feedContents != false) {
+                $this->fn_SubmitInventoryFeed(true);
+            }
+
+            print('<pre> feed contents:');
+            var_dump($feedContents);
+            print('</pre>');
+        }
+
+        public function fn_SubmitInventoryFeed($flat_file){
             // step 1
-            // $feed_type = FeedType::POST_ORDER_FULFILLMENT_DATA;
-            $feed_type = FeedType::POST_PRODUCT_PRICING_DATA;
+            $feed_type = $flat_file ? FeedType::POST_FLAT_FILE_INVLOADER_DATA : FeedType::POST_PRODUCT_PRICING_DATA;
             
             $feed_document_info = $this->fn_CreateFeedDocument($feed_type);
 
             $feed_document_id = $feed_document_info->getFeedDocumentId();
-
-            print('<pre>');
-            var_dump($feed_document_id);
-            print('</pre>');
 
             // step 2
             // $file_path = './amazon_orders.csv';
@@ -740,16 +837,19 @@
             // print('</pre>');
 
             // step 3
-            $file_path = __DIR__ . '/price_feed.xml';
+            $file_path = __DIR__ . ($flat_file ? '/POST_FLAT_FILE_INVLOADER_DATA.txt' : '/feed1.xml');
+            // $file_path = __DIR__ . '/POST_FLAT_FILE_INVLOADER_DATA.txt';
+            // $file_path = __DIR__ . '/feed1.xml';
             $result = $this->fn_UploadFeedDocument($feed_document_info, $feed_type, $file_path);
 
-            print('<pre>');
-            var_dump($result);
-            print('</pre>');
-
+            
             // step 4
             $result = $this->fn_CreateFeed($feed_document_id, $feed_type['name'], US_MARKETPLACE);
             $feed_id = $result->getFeedId();
+
+            print('<pre> feed_id:');
+            var_dump($feed_id);
+            print('</pre>');
 
             // step 5
             $start_time = microtime(true);
@@ -768,6 +868,11 @@
                     return;
                 }
             }
+
+            print('<pre> get_feed:');
+            var_dump($result);
+            print('</pre>');
+
             $feed_document_id = $result->getResultFeedDocumentId();
 
             // step 6
@@ -788,6 +893,19 @@
             print('<pre>');
             var_dump($result);
             print('</pre>');
+        }
+
+        public function fn_GetOrderBuyerInfo($order_id) {
+            $apiInstance = new OrdersV0Api($this->config);
+            try {
+                $result = $apiInstance->getOrderBuyerInfo($order_id);
+                print('<pre>');
+                var_dump($result);
+                print('</pre>');
+                return $result;
+            } catch (Exception $e) {
+                echo 'Exception when calling OrdersV0Api->getOrderBuyerInfo: ', $e->getMessage(), PHP_EOL;
+            }
         }
     }
 ?>

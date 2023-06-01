@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<AmazonEnvelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="amzn-envelope.xsd">
+  <Header>
+    <DocumentVersion>1.0</DocumentVersion>
+    <MerchantIdentifier>DEI_APP</MerchantIdentifier>
+  </Header>
+  <MessageType>Price</MessageType>
+  <Message>
+    <MessageID>1</MessageID>
+    <OperationType>Update</OperationType>
+    <Price>
+      <SKU>12189CW-135</SKU>
+      <StandardPrice currency="USD">180.00</StandardPrice>
+      <BusinessPrice>175.46</BusinessPrice>
+      <QuantityPriceType>fixed</QuantityPriceType>
+      <QuantityPrice>
+        <QuantityPrice1>171.33</QuantityPrice1>
+        <QuantityLowerBound1>2</QuantityLowerBound1>
+        <QuantityPrice2>165.85</QuantityPrice2>
+        <QuantityLowerBound2>4</QuantityLowerBound2>
+        <QuantityPrice3>160.96</QuantityPrice3>
+        <QuantityLowerBound3>40</QuantityLowerBound3>
+      </QuantityPrice>
+      <MinimumSellerAllowedPrice currency="USD">140.00</MinimumSellerAllowedPrice>
+      <MaximumSellerAllowedPrice currency="USD">456.75</MaximumSellerAllowedPrice>
+    </Price>
+  </Message>
+  <Message>
+    <MessageID>2</MessageID>
+    <OperationType>Update</OperationType>
+    <Price>
+      <SKU>41586-38</SKU>
+      <StandardPrice currency="USD">66.00</StandardPrice>
+      <BusinessPrice>64.95</BusinessPrice>
+      <MinimumSellerAllowedPrice currency="USD">50.00</MinimumSellerAllowedPrice>
+      <MaximumSellerAllowedPrice currency="USD">119.46</MaximumSellerAllowedPrice>
+      <PricingAction>delete business_price</PricingAction>
+    </Price>
+  </Message>
+</AmazonEnvelope>
